@@ -1,10 +1,11 @@
 import { motion } from 'framer-motion';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Pencil, Copy } from 'lucide-react';
 import { getCategoryById } from '../constants/categories';
+import { formatCurrency, formatDate } from '../utils';
 
-const TransactionItem = ({ transaction, onDelete }) => {
+const TransactionItem = ({ transaction, onDelete, onEdit, onDuplicate }) => {
   // Soporta tanto _id (MongoDB) como id (legacy)
-  const { _id, id, text, amount, category, note } = transaction;
+  const { _id, id, text, amount, category, note, date } = transaction;
   const transactionId = _id || id;
   const isIncome = amount > 0;
   
@@ -12,14 +13,7 @@ const TransactionItem = ({ transaction, onDelete }) => {
   const categoryData = getCategoryById(category);
   const CategoryIcon = categoryData.icon;
 
-  const formatMoney = (amount) => {
-    const sign = amount >= 0 ? '+' : '-';
-    return `${sign}$${Math.abs(amount).toLocaleString('es-AR', { 
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2 
-    })}`;
-  };
-
+  
   // Mostrar nota si existe, sino el nombre de categoría o texto legacy
   const displayText = note || categoryData.name || text;
 
@@ -46,22 +40,55 @@ const TransactionItem = ({ transaction, onDelete }) => {
           <p className="text-gray-800 dark:text-gray-100 font-medium truncate">
             {displayText}
           </p>
-          {note && category && (
-            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-              {categoryData.name}
-            </p>
-          )}
+          <p className="text-xs text-gray-500 dark:text-gray-400 truncate flex items-center gap-1">
+            {note && category && <span>{categoryData.name}</span>}
+            {note && category && date && <span>•</span>}
+            {date && <span>{formatDate(date)}</span>}
+          </p>
         </div>
         
-        {/* Monto y botón eliminar */}
-        <div className="flex items-center gap-2">
+        {/* Monto y botones de acción */}
+        <div className="flex items-center gap-1">
           <span className={`
-            font-semibold text-lg whitespace-nowrap
+            font-semibold text-lg whitespace-nowrap mr-1
             ${isIncome ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}
           `}>
-            {formatMoney(amount)}
+            {formatCurrency(amount, true)}
           </span>
           
+          {/* Botón Duplicar */}
+          <button
+            onClick={() => onDuplicate(transaction)}
+            className="
+              opacity-0 group-hover:opacity-100
+              w-8 h-8 flex items-center justify-center
+              bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50
+              text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300
+              rounded-lg transition-all duration-200
+              focus:outline-none focus:ring-2 focus:ring-blue-300 dark:focus:ring-blue-800
+            "
+            title="Duplicar transacción"
+          >
+            <Copy className="w-4 h-4" />
+          </button>
+          
+          {/* Botón Editar */}
+          <button
+            onClick={() => onEdit(transaction)}
+            className="
+              opacity-0 group-hover:opacity-100
+              w-8 h-8 flex items-center justify-center
+              bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 dark:hover:bg-amber-900/50
+              text-amber-500 dark:text-amber-400 hover:text-amber-600 dark:hover:text-amber-300
+              rounded-lg transition-all duration-200
+              focus:outline-none focus:ring-2 focus:ring-amber-300 dark:focus:ring-amber-800
+            "
+            title="Editar transacción"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
+          
+          {/* Botón Eliminar */}
           <button
             onClick={() => onDelete(transactionId)}
             className="

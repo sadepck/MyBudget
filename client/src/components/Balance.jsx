@@ -1,16 +1,10 @@
 import { TrendingUp, TrendingDown } from 'lucide-react';
+import { formatCurrency } from '../utils';
 
 const Balance = ({ transactions }) => {
   const total = transactions.reduce((acc, transaction) => acc + transaction.amount, 0);
   
-  const formatMoney = (amount) => {
-    const sign = amount >= 0 ? '+' : '';
-    return `${sign}$${Math.abs(amount).toLocaleString('es-AR', { 
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2 
-    })}`;
-  };
-
+  
   const isPositive = total >= 0;
 
   return (
@@ -30,7 +24,7 @@ const Balance = ({ transactions }) => {
       <p className={`text-4xl md:text-5xl font-bold ${
         isPositive ? 'text-gray-800 dark:text-white' : 'text-red-500 dark:text-red-400'
       }`}>
-        {formatMoney(total)}
+        {formatCurrency(total, true)}
       </p>
     </div>
   );

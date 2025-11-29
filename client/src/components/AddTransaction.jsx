@@ -1,13 +1,38 @@
-import { useState } from 'react';
-import { ArrowUp, ArrowDown, Plus, ChevronDown } from 'lucide-react';
-import { getCategoriesByType } from '../constants/categories';
+import { useState, useEffect } from 'react';
+import { ArrowUp, ArrowDown, Plus, ChevronDown, Save, X } from 'lucide-react';
+import { getCategoriesByType, getCategoryById } from '../constants/categories';
 
-const AddTransaction = ({ onAdd }) => {
+// Obtener fecha de hoy en formato YYYY-MM-DD para el input date
+const getTodayDate = () => {
+  const today = new Date();
+  return today.toISOString().split('T')[0];
+};
+
+const AddTransaction = ({ onAdd, initialData, isEditing, onCancel }) => {
   const [category, setCategory] = useState('');
   const [note, setNote] = useState('');
   const [amount, setAmount] = useState('');
+  const [date, setDate] = useState(getTodayDate());
   const [isExpense, setIsExpense] = useState(false);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+
+  // Cargar datos iniciales para edición o duplicación
+  useEffect(() => {
+    if (initialData) {
+      const isExp = initialData.amount < 0;
+      setIsExpense(isExp);
+      setCategory(initialData.category || '');
+      setNote(initialData.note || '');
+      setAmount(Math.abs(initialData.amount).toString());
+      // Para duplicar, usar fecha de hoy; para editar, usar fecha original
+      if (isEditing && initialData.date) {
+        const d = new Date(initialData.date);
+        setDate(d.toISOString().split('T')[0]);
+      } else {
+        setDate(getTodayDate());
+      }
+    }
+  }, [initialData, isEditing]);
 
   // Obtener categorías según el tipo de transacción
   const categories = getCategoriesByType(isExpense);
@@ -29,17 +54,28 @@ const AddTransaction = ({ onAdd }) => {
     const finalAmount = isExpense ? -Math.abs(numAmount) : Math.abs(numAmount);
     const categoryData = categories.find(c => c.id === category);
 
-    onAdd({
-      text: categoryData?.name || category, // Fallback para compatibilidad
+    const transactionData = {
+      text: categoryData?.name || category,
       category: category,
       note: note.trim(),
-      amount: finalAmount
-    });
+      amount: finalAmount,
+      date: date
+    };
 
-    // Limpiar formulario
-    setCategory('');
-    setNote('');
-    setAmount('');
+    // Si estamos editando, incluir el ID
+    if (isEditing && initialData?._id) {
+      transactionData._id = initialData._id;
+    }
+
+    onAdd(transactionData);
+
+    // Solo limpiar si no estamos editando
+    if (!isEditing) {
+      setCategory('');
+      setNote('');
+      setAmount('');
+      setDate(getTodayDate());
+    }
   };
 
   // Cambiar tipo resetea la categoría
@@ -50,9 +86,11 @@ const AddTransaction = ({ onAdd }) => {
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 mb-6 transition-colors duration-300">
-      <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-4">
-        Nueva Transacción
-      </h3>
+      {!isEditing && !initialData && (
+        <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-4">
+          Nueva Transacción
+        </h3>
+      )}
       
       <form onSubmit={handleSubmit}>
         {/* Tipo de transacción */}
@@ -168,6 +206,26 @@ const AddTransaction = ({ onAdd }) => {
           />
         </div>
 
+        {/* Campo de fecha */}
+        <div className="mb-4">
+          <label htmlFor="date" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            Fecha
+          </label>
+          <input
+            type="date"
+            id="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="
+              w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600
+              bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100
+              focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent
+              transition-all duration-200
+              [color-scheme:light] dark:[color-scheme:dark]
+            "
+          />
+        </div>
+
         {/* Campo de monto */}
         <div className="mb-5">
           <label htmlFor="amount" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
@@ -195,22 +253,49 @@ const AddTransaction = ({ onAdd }) => {
           </div>
         </div>
 
-        {/* Botón submit */}
-        <button
-          type="submit"
-          className="
-            w-full py-3.5 px-4 rounded-xl font-semibold text-white
-            bg-gradient-to-r from-purple-600 to-indigo-600
-            hover:from-purple-700 hover:to-indigo-700
-            shadow-lg shadow-purple-500/30 dark:shadow-purple-900/30
-            transition-all duration-200 transform hover:scale-[1.02]
-            focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800
-            flex items-center justify-center gap-2
-          "
-        >
-          <Plus className="w-5 h-5" />
-          Agregar Transacción
-        </button>
+        {/* Botones */}
+        <div className={`flex gap-3 ${onCancel ? '' : ''}`}>
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="
+                flex-1 py-3 px-4 rounded-xl font-semibold
+                bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300
+                hover:bg-gray-200 dark:hover:bg-gray-600
+                transition-all duration-200
+                flex items-center justify-center gap-2
+              "
+            >
+              <X className="w-5 h-5" />
+              Cancelar
+            </button>
+          )}
+          <button
+            type="submit"
+            className={`
+              ${onCancel ? 'flex-1' : 'w-full'} py-3.5 px-4 rounded-xl font-semibold text-white
+              bg-gradient-to-r from-purple-600 to-indigo-600
+              hover:from-purple-700 hover:to-indigo-700
+              shadow-lg shadow-purple-500/30 dark:shadow-purple-900/30
+              transition-all duration-200 transform hover:scale-[1.02]
+              focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800
+              flex items-center justify-center gap-2
+            `}
+          >
+            {isEditing ? (
+              <>
+                <Save className="w-5 h-5" />
+                Guardar Cambios
+              </>
+            ) : (
+              <>
+                <Plus className="w-5 h-5" />
+                Agregar Transacción
+              </>
+            )}
+          </button>
+        </div>
       </form>
     </div>
   );

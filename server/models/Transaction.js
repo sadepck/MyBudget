@@ -1,6 +1,11 @@
 const mongoose = require('mongoose');
 
 const TransactionSchema = new mongoose.Schema({
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
   text: {
     type: String,
     required: [true, 'Por favor ingresa una descripción'],
@@ -22,6 +27,10 @@ const TransactionSchema = new mongoose.Schema({
     maxlength: [200, 'La nota no puede tener más de 200 caracteres'],
     default: ''
   },
+  date: {
+    type: Date,
+    default: Date.now
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -29,7 +38,11 @@ const TransactionSchema = new mongoose.Schema({
 });
 
 // Índices para mejorar rendimiento en consultas
+TransactionSchema.index({ user: 1, createdAt: -1 });
+TransactionSchema.index({ user: 1, date: -1 });
+TransactionSchema.index({ user: 1, category: 1 });
 TransactionSchema.index({ createdAt: -1 });
+TransactionSchema.index({ date: -1 });
 TransactionSchema.index({ category: 1 });
 TransactionSchema.index({ amount: 1 });
 

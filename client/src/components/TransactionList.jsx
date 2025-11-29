@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ClipboardList } from 'lucide-react';
 import TransactionItem from './TransactionItem';
 
-const TransactionList = ({ transactions, onDelete }) => {
+const TransactionList = ({ transactions, onDelete, onEdit, onDuplicate }) => {
   if (transactions.length === 0) {
     return (
       <motion.div 
@@ -35,6 +35,8 @@ const TransactionList = ({ transactions, onDelete }) => {
               key={transaction._id || transaction.id} 
               transaction={transaction} 
               onDelete={onDelete}
+              onEdit={onEdit}
+              onDuplicate={onDuplicate}
             />
           ))}
         </AnimatePresence>
