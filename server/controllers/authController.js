@@ -1,5 +1,10 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Transaction = require('../models/Transaction');
+const Budget = require('../models/Budget');
+const Debt = require('../models/Debt');
+const Wish = require('../models/Wish');
+const Subscription = require('../models/Subscription');
 
 // Generar JWT Token
 const generateToken = (id) => {
@@ -174,6 +179,50 @@ exports.getMe = async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Error del servidor'
+    });
+  }
+};
+
+// @desc    Eliminar cuenta de usuario y todos sus datos
+// @route   DELETE /api/auth/delete-account
+// @access  Private
+exports.deleteAccount = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    // Eliminar todas las transacciones del usuario
+    await Transaction.deleteMany({ user: userId });
+
+    // Eliminar todos los presupuestos del usuario
+    await Budget.deleteMany({ user: userId });
+
+    // Eliminar todas las deudas donde el usuario es acreedor
+    await Debt.deleteMany({ creditor: userId });
+
+    // Eliminar todos los deseos del usuario
+    await Wish.deleteMany({ user: userId });
+
+    // Eliminar todas las suscripciones del usuario
+    await Subscription.deleteMany({ user: userId });
+
+    // Eliminar el usuario
+    await User.findByIdAndDelete(userId);
+
+    // Limpiar la cookie
+    res.cookie('token', '', {
+      httpOnly: true,
+      expires: new Date(0)
+    });
+
+    res.json({
+      success: true,
+      message: 'Cuenta eliminada correctamente'
+    });
+  } catch (error) {
+    console.error('Error eliminando cuenta:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error del servidor al eliminar la cuenta'
     });
   }
 };

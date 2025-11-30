@@ -7,22 +7,28 @@ const DebtSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  // Email del deudor (identificador clave)
-  debtorEmail: {
+  // Teléfono del deudor (identificador clave para WhatsApp)
+  debtorPhone: {
     type: String,
-    required: [true, 'El email del deudor es requerido'],
-    lowercase: true,
     trim: true,
-    match: [
-      /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
-      'Por favor ingresa un email válido'
-    ]
+    default: ''
   },
   // Nombre del deudor (para mostrar)
   debtorName: {
     type: String,
     trim: true,
     default: ''
+  },
+  // Nombre del acreedor (para deudas propias - lo que yo debo)
+  creditorName: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  // Indica si es una deuda propia (lo que yo debo a alguien)
+  isMyDebt: {
+    type: Boolean,
+    default: false
   },
   // Monto de la deuda
   amount: {
@@ -55,7 +61,7 @@ const DebtSchema = new mongoose.Schema({
 
 // Índices para búsquedas eficientes
 DebtSchema.index({ creditor: 1, isPaid: 1 });
-DebtSchema.index({ debtorEmail: 1, isPaid: 1 });
+DebtSchema.index({ debtorPhone: 1, isPaid: 1 });
 DebtSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('Debt', DebtSchema);

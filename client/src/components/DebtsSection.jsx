@@ -6,14 +6,15 @@ import {
   X, 
   Check, 
   Trash2, 
-  Mail, 
+  Phone, 
   User, 
   FileText,
   ArrowDownLeft,
   ArrowUpRight,
   Undo2,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  MessageCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrency, formatDate } from '../utils';
@@ -24,12 +25,20 @@ const DebtsSection = () => {
   const [debts, setDebts] = useState({ owedToMe: [], iOwe: [] });
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [formType, setFormType] = useState('owedToMe'); // 'owedToMe' = préstamo | 'iOwe' = deuda propia
   const [activeTab, setActiveTab] = useState('owedToMe'); // 'owedToMe' | 'iOwe'
   const [showPaid, setShowPaid] = useState(false);
   
-  // Form state
+  // Form state para préstamos (por cobrar)
   const [formData, setFormData] = useState({
-    email: '',
+    phone: '',
+    name: '',
+    amount: '',
+    description: ''
+  });
+
+  // Form state para deudas propias (por pagar)
+  const [formDataIOwe, setFormDataIOwe] = useState({
     name: '',
     amount: '',
     description: ''
@@ -77,8 +86,8 @@ const DebtsSection = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!formData.email || !formData.amount) {
-      toast.error('Email y monto son requeridos');
+    if (!formData.phone || !formData.amount) {
+      toast.error('Número de teléfono y monto son requeridos');
       return;
     }
 
@@ -97,7 +106,7 @@ const DebtsSection = () => {
           ...prev,
           owedToMe: [data.data, ...prev.owedToMe]
         }));
-        setFormData({ email: '', name: '', amount: '', description: '' });
+        setFormData({ phone: '', name: '', amount: '', description: '' });
         setShowForm(false);
         toast.success('Préstamo registrado');
       } else {
@@ -108,7 +117,42 @@ const DebtsSection = () => {
     }
   };
 
-  const handleMarkPaid = async (debtId) => {
+  // Crear deuda propia (lo que yo debo)
+  const handleSubmitIOwe = async (e) => {
+    e.preventDefault();
+    
+    if (!formDataIOwe.name || !formDataIOwe.amount) {
+      toast.error('Nombre y monto son requeridos');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/iowe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(formDataIOwe)
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setDebts(prev => ({
+          ...prev,
+          iOwe: [data.data, ...prev.iOwe]
+        }));
+        setFormDataIOwe({ name: '', amount: '', description: '' });
+        setShowForm(false);
+        toast.success('Deuda registrada');
+      } else {
+        toast.error(data.error || 'Error al registrar deuda');
+      }
+    } catch (error) {
+      toast.error('Error de conexión');
+    }
+  };
+
+  const handleMarkPaid = async (debtId, isIOwe = false) => {
     try {
       const response = await fetch(`${API_URL}/${debtId}/pay`, {
         method: 'PUT',
@@ -118,20 +162,30 @@ const DebtsSection = () => {
       const data = await response.json();
       
       if (data.success) {
-        setDebts(prev => ({
-          ...prev,
-          owedToMe: prev.owedToMe.map(d => 
-            d._id === debtId ? { ...d, isPaid: true, paidAt: new Date() } : d
-          )
-        }));
-        toast.success('¡Deuda cobrada!');
+        if (isIOwe) {
+          setDebts(prev => ({
+            ...prev,
+            iOwe: prev.iOwe.map(d => 
+              d._id === debtId ? { ...d, isPaid: true, paidAt: new Date() } : d
+            )
+          }));
+          toast.success('¡Deuda pagada!');
+        } else {
+          setDebts(prev => ({
+            ...prev,
+            owedToMe: prev.owedToMe.map(d => 
+              d._id === debtId ? { ...d, isPaid: true, paidAt: new Date() } : d
+            )
+          }));
+          toast.success('¡Deuda cobrada!');
+        }
       }
     } catch (error) {
       toast.error('Error al marcar como pagada');
     }
   };
 
-  const handleUnmarkPaid = async (debtId) => {
+  const handleUnmarkPaid = async (debtId, isIOwe = false) => {
     try {
       const response = await fetch(`${API_URL}/${debtId}/unpay`, {
         method: 'PUT',
@@ -141,12 +195,21 @@ const DebtsSection = () => {
       const data = await response.json();
       
       if (data.success) {
-        setDebts(prev => ({
-          ...prev,
-          owedToMe: prev.owedToMe.map(d => 
-            d._id === debtId ? { ...d, isPaid: false, paidAt: null } : d
-          )
-        }));
+        if (isIOwe) {
+          setDebts(prev => ({
+            ...prev,
+            iOwe: prev.iOwe.map(d => 
+              d._id === debtId ? { ...d, isPaid: false, paidAt: null } : d
+            )
+          }));
+        } else {
+          setDebts(prev => ({
+            ...prev,
+            owedToMe: prev.owedToMe.map(d => 
+              d._id === debtId ? { ...d, isPaid: false, paidAt: null } : d
+            )
+          }));
+        }
         toast.success('Deuda restaurada');
       }
     } catch (error) {
@@ -154,8 +217,8 @@ const DebtsSection = () => {
     }
   };
 
-  const handleDelete = async (debtId) => {
-    if (!window.confirm('¿Eliminar este préstamo?')) return;
+  const handleDelete = async (debtId, isIOwe = false) => {
+    if (!window.confirm(isIOwe ? '¿Eliminar esta deuda?' : '¿Eliminar este préstamo?')) return;
     
     try {
       const response = await fetch(`${API_URL}/${debtId}`, {
@@ -166,11 +229,19 @@ const DebtsSection = () => {
       const data = await response.json();
       
       if (data.success) {
-        setDebts(prev => ({
-          ...prev,
-          owedToMe: prev.owedToMe.filter(d => d._id !== debtId)
-        }));
-        toast.success('Préstamo eliminado');
+        if (isIOwe) {
+          setDebts(prev => ({
+            ...prev,
+            iOwe: prev.iOwe.filter(d => d._id !== debtId)
+          }));
+          toast.success('Deuda eliminada');
+        } else {
+          setDebts(prev => ({
+            ...prev,
+            owedToMe: prev.owedToMe.filter(d => d._id !== debtId)
+          }));
+          toast.success('Préstamo eliminado');
+        }
       }
     } catch (error) {
       toast.error('Error al eliminar');
@@ -228,79 +299,168 @@ const DebtsSection = () => {
       {/* Formulario */}
       <AnimatePresence>
         {showForm && (
-          <motion.form
+          <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            onSubmit={handleSubmit}
             className="mb-4 overflow-hidden"
           >
             <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl space-y-3">
-              <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Registrar nuevo préstamo
-              </h4>
-              
-              {/* Email */}
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="Email del deudor *"
-                  required
-                  className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-sm"
-                />
+              {/* Selector de tipo */}
+              <div className="flex gap-2 mb-3">
+                <button
+                  type="button"
+                  onClick={() => setFormType('owedToMe')}
+                  className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1 ${
+                    formType === 'owedToMe'
+                      ? 'bg-emerald-500 text-white'
+                      : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300'
+                  }`}
+                >
+                  <ArrowDownLeft className="w-3 h-3" />
+                  Presté dinero
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormType('iOwe')}
+                  className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1 ${
+                    formType === 'iOwe'
+                      ? 'bg-red-500 text-white'
+                      : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300'
+                  }`}
+                >
+                  <ArrowUpRight className="w-3 h-3" />
+                  Me prestaron
+                </button>
               </div>
 
-              {/* Nombre */}
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Nombre (opcional)"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-sm"
-                />
-              </div>
+              {/* Formulario Por Cobrar (Presté dinero) */}
+              {formType === 'owedToMe' && (
+                <form onSubmit={handleSubmit} className="space-y-3">
+                  <h4 className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
+                    Registrar préstamo (me deben)
+                  </h4>
+                  
+                  {/* Teléfono */}
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="tel"
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      placeholder="Teléfono del deudor (ej: +5491123456789) *"
+                      required
+                      className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-sm"
+                    />
+                  </div>
 
-              {/* Monto */}
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                <input
-                  type="number"
-                  value={formData.amount}
-                  onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                  placeholder="Monto *"
-                  required
-                  min="0.01"
-                  step="0.01"
-                  className="w-full pl-8 pr-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-sm"
-                />
-              </div>
+                  {/* Nombre */}
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      placeholder="Nombre (opcional)"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-sm"
+                    />
+                  </div>
 
-              {/* Descripción */}
-              <div className="relative">
-                <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Concepto (opcional)"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-sm"
-                />
-              </div>
+                  {/* Monto */}
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                    <input
+                      type="number"
+                      value={formData.amount}
+                      onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                      placeholder="Monto *"
+                      required
+                      min="0.01"
+                      step="0.01"
+                      className="w-full pl-8 pr-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-sm"
+                    />
+                  </div>
 
-              <button
-                type="submit"
-                className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium transition-colors flex items-center justify-center gap-2"
-              >
-                <HandCoins className="w-4 h-4" />
-                Registrar Préstamo
-              </button>
+                  {/* Descripción */}
+                  <div className="relative">
+                    <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      placeholder="Concepto (opcional)"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-sm"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium transition-colors flex items-center justify-center gap-2"
+                  >
+                    <ArrowDownLeft className="w-4 h-4" />
+                    Registrar Préstamo
+                  </button>
+                </form>
+              )}
+
+              {/* Formulario Por Pagar (Me prestaron) */}
+              {formType === 'iOwe' && (
+                <form onSubmit={handleSubmitIOwe} className="space-y-3">
+                  <h4 className="text-sm font-medium text-red-600 dark:text-red-400">
+                    Registrar deuda (yo debo)
+                  </h4>
+                  
+                  {/* Nombre del acreedor */}
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      value={formDataIOwe.name}
+                      onChange={(e) => setFormDataIOwe({ ...formDataIOwe, name: e.target.value })}
+                      placeholder="¿A quién le debo? *"
+                      required
+                      className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-sm"
+                    />
+                  </div>
+
+                  {/* Monto */}
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                    <input
+                      type="number"
+                      value={formDataIOwe.amount}
+                      onChange={(e) => setFormDataIOwe({ ...formDataIOwe, amount: e.target.value })}
+                      placeholder="Monto *"
+                      required
+                      min="0.01"
+                      step="0.01"
+                      className="w-full pl-8 pr-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-sm"
+                    />
+                  </div>
+
+                  {/* Descripción */}
+                  <div className="relative">
+                    <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      value={formDataIOwe.description}
+                      onChange={(e) => setFormDataIOwe({ ...formDataIOwe, description: e.target.value })}
+                      placeholder="Concepto (opcional)"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-sm"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium transition-colors flex items-center justify-center gap-2"
+                  >
+                    <ArrowUpRight className="w-4 h-4" />
+                    Registrar Deuda
+                  </button>
+                </form>
+              )}
             </div>
-          </motion.form>
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -373,9 +533,26 @@ const DebtsSection = () => {
 // Componente de tarjeta de deuda
 const DebtCard = ({ debt, type, onMarkPaid, onUnmarkPaid, onDelete }) => {
   const isOwedToMe = type === 'owedToMe';
+  // Para deudas propias (isMyDebt), mostrar creditorName
+  // Para deudas que otros me asignaron, mostrar creditor.name
   const personName = isOwedToMe 
-    ? (debt.debtorName || debt.debtorEmail)
-    : (debt.creditor?.name || debt.creditor?.email || 'Usuario');
+    ? (debt.debtorName || debt.debtorPhone)
+    : (debt.isMyDebt ? debt.creditorName : (debt.creditor?.name || debt.creditor?.email || 'Usuario'));
+  
+  // Obtener el teléfono para WhatsApp
+  const phoneNumber = isOwedToMe ? debt.debtorPhone : null;
+  
+  // Generar link de WhatsApp directo (abre la app instalada)
+  const getWhatsAppLink = () => {
+    if (!phoneNumber) return null;
+    const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
+    const message = encodeURIComponent(
+      `Hola${debt.debtorName ? ` ${debt.debtorName}` : ''}! Te escribo para recordarte sobre el préstamo de ${formatCurrency(debt.amount)}${debt.description ? ` (${debt.description})` : ''}.`
+    );
+    // Usar intent:// para Android y whatsapp:// como fallback
+    // El protocolo whatsapp://send abre directamente la app instalada
+    return `whatsapp://send?phone=${cleanPhone}&text=${message}`;
+  };
 
   return (
     <motion.div
@@ -404,6 +581,18 @@ const DebtCard = ({ debt, type, onMarkPaid, onUnmarkPaid, onDelete }) => {
                 Pagado
               </span>
             )}
+            {/* Botón WhatsApp */}
+            {isOwedToMe && phoneNumber && !debt.isPaid && (
+              <a
+                href={getWhatsAppLink()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
+                title="Enviar recordatorio por WhatsApp"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+              </a>
+            )}
           </div>
           {debt.description && (
             <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
@@ -429,12 +618,12 @@ const DebtCard = ({ debt, type, onMarkPaid, onUnmarkPaid, onDelete }) => {
             {formatCurrency(debt.amount)}
           </span>
 
-          {/* Acciones solo para "Por Cobrar" */}
+          {/* Acciones para "Por Cobrar" */}
           {isOwedToMe && (
             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               {debt.isPaid ? (
                 <button
-                  onClick={() => onUnmarkPaid(debt._id)}
+                  onClick={() => onUnmarkPaid(debt._id, false)}
                   className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/50"
                   title="Restaurar como pendiente"
                 >
@@ -442,7 +631,37 @@ const DebtCard = ({ debt, type, onMarkPaid, onUnmarkPaid, onDelete }) => {
                 </button>
               ) : (
                 <button
-                  onClick={() => onMarkPaid(debt._id)}
+                  onClick={() => onMarkPaid(debt._id, false)}
+                  className="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-900/50"
+                  title="Marcar como cobrado"
+                >
+                  <Check className="w-4 h-4" />
+                </button>
+              )}
+              <button
+                onClick={() => onDelete(debt._id, false)}
+                className="p-1.5 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50"
+                title="Eliminar"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Acciones para "Por Pagar" (solo deudas propias) */}
+          {!isOwedToMe && debt.isMyDebt && (
+            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              {debt.isPaid ? (
+                <button
+                  onClick={() => onUnmarkPaid(debt._id, true)}
+                  className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/50"
+                  title="Restaurar como pendiente"
+                >
+                  <Undo2 className="w-4 h-4" />
+                </button>
+              ) : (
+                <button
+                  onClick={() => onMarkPaid(debt._id, true)}
                   className="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-900/50"
                   title="Marcar como pagado"
                 >
@@ -450,7 +669,7 @@ const DebtCard = ({ debt, type, onMarkPaid, onUnmarkPaid, onDelete }) => {
                 </button>
               )}
               <button
-                onClick={() => onDelete(debt._id)}
+                onClick={() => onDelete(debt._id, true)}
                 className="p-1.5 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50"
                 title="Eliminar"
               >

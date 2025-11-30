@@ -11,6 +11,8 @@ import TransactionFilters from './components/TransactionFilters';
 import TransactionModal from './components/TransactionModal';
 import BudgetProgress from './components/BudgetProgress';
 import DebtsSection from './components/DebtsSection';
+import WishlistSection from './components/WishlistSection';
+import SubscriptionsSection from './components/SubscriptionsSection';
 import { PageSkeleton } from './components/Skeleton';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -53,7 +55,7 @@ const PublicRoute = ({ children }) => {
 
 // Dashboard principal
 function Dashboard() {
-  const { user, logout } = useAuth();
+  const { user, logout, deleteAccount } = useAuth();
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   
@@ -96,6 +98,14 @@ function Dashboard() {
   const handleLogout = async () => {
     await logout();
     toast.success('Sesión cerrada');
+  };
+
+  const handleDeleteAccount = async () => {
+    const result = await deleteAccount();
+    if (result.success) {
+      toast.success('Cuenta eliminada correctamente');
+    }
+    return result;
   };
 
   const fetchTransactions = async () => {
@@ -266,7 +276,7 @@ function Dashboard() {
   return (
     <div className="min-h-screen py-8 px-4">
       <div className="max-w-md mx-auto">
-        <Header user={user} onLogout={handleLogout} />
+        <Header user={user} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} />
         {/* Balance e Ingresos/Gastos siempre muestran totales reales */}
         <Balance transactions={transactions} />
         <IncomeExpenses transactions={transactions} />
@@ -283,6 +293,8 @@ function Dashboard() {
         {/* Gráfico y Lista usan datos filtrados */}
         <DashboardChart transactions={filteredTransactions} />
         <BudgetProgress transactions={transactions} />
+        <SubscriptionsSection />
+        <WishlistSection onTransactionCreated={fetchTransactions} />
         <DebtsSection />
         <AddTransaction onAdd={addTransaction} />
         <TransactionList 

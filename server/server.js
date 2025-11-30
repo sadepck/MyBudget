@@ -10,8 +10,10 @@ const connectDB = require('./config/db');
 const Transaction = require('./models/Transaction');
 const Budget = require('./models/Budget');
 const Debt = require('./models/Debt');
+const Wish = require('./models/Wish');
+const Subscription = require('./models/Subscription');
 const protect = require('./middleware/protect');
-const { register, login, logout, getMe } = require('./controllers/authController');
+const { register, login, logout, getMe, deleteAccount } = require('./controllers/authController');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -90,6 +92,7 @@ app.post('/api/auth/register', authLimiter, register);
 app.post('/api/auth/login', authLimiter, login);
 app.post('/api/auth/logout', logout);
 app.get('/api/auth/me', protect, getMe);
+app.delete('/api/auth/delete-account', protect, deleteAccount);
 
 // ============ RUTAS TRANSACTIONS (PROTEGIDAS) ============
 
@@ -384,17 +387,31 @@ app.delete('/api/budgets/:id', protect, async (req, res) => {
 // GET /api/debts - Obtener deudas (lo que me deben y lo que debo)
 app.get('/api/debts', protect, async (req, res) => {
   try {
-    // Deudas donde yo soy el acreedor (me deben)
+    // Deudas donde yo soy el acreedor (me deben) - excluir deudas propias
     const owedToMe = await Debt.find({ 
-      creditor: req.user._id 
+      creditor: req.user._id,
+      isMyDebt: { $ne: true }
     }).sort({ createdAt: -1 });
 
-    // Deudas donde yo soy el deudor (debo)
-    const iOwe = await Debt.find({ 
-      debtorEmail: req.user.email.toLowerCase() 
-    })
-    .populate('creditor', 'name email')
-    .sort({ createdAt: -1 });
+    // Deudas propias (lo que yo debo - registradas por mí)
+    const myOwnDebts = await Debt.find({
+      creditor: req.user._id,
+      isMyDebt: true
+    }).sort({ createdAt: -1 });
+
+    // Deudas donde otros me registraron como deudor (por teléfono)
+    let othersDebts = [];
+    if (req.user.phone) {
+      othersDebts = await Debt.find({ 
+        debtorPhone: req.user.phone,
+        isMyDebt: { $ne: true }
+      })
+      .populate('creditor', 'name email')
+      .sort({ createdAt: -1 });
+    }
+
+    // Combinar deudas propias con las que otros me asignaron
+    const iOwe = [...myOwnDebts, ...othersDebts];
 
     res.json({
       success: true,
@@ -415,18 +432,21 @@ app.get('/api/debts', protect, async (req, res) => {
 // POST /api/debts - Crear nueva deuda (prestar dinero)
 app.post('/api/debts', protect, async (req, res) => {
   try {
-    const { email, amount, description, name } = req.body;
+    const { phone, amount, description, name } = req.body;
 
     // Validaciones
-    if (!email || !amount) {
+    if (!phone || !amount) {
       return res.status(400).json({
         success: false,
-        error: 'Email y monto son requeridos'
+        error: 'Número de teléfono y monto son requeridos'
       });
     }
 
+    // Limpiar el número de teléfono (remover espacios y guiones)
+    const cleanPhone = phone.replace(/[\s-]/g, '');
+
     // No puedes prestarte a ti mismo
-    if (email.toLowerCase() === req.user.email.toLowerCase()) {
+    if (req.user.phone && cleanPhone === req.user.phone) {
       return res.status(400).json({
         success: false,
         error: 'No puedes registrar una deuda contigo mismo'
@@ -435,7 +455,7 @@ app.post('/api/debts', protect, async (req, res) => {
 
     const debt = await Debt.create({
       creditor: req.user._id,
-      debtorEmail: email.toLowerCase().trim(),
+      debtorPhone: cleanPhone,
       debtorName: name || '',
       amount: Number(amount),
       description: description || ''
@@ -447,6 +467,52 @@ app.post('/api/debts', protect, async (req, res) => {
     });
   } catch (error) {
     console.error('Error creando deuda:', error);
+    
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        error: messages.join(', ')
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: 'Error del servidor al crear deuda'
+    });
+  }
+});
+
+// POST /api/debts/iowe - Crear nueva deuda propia (lo que yo debo)
+app.post('/api/debts/iowe', protect, async (req, res) => {
+  try {
+    const { name, amount, description } = req.body;
+
+    // Validaciones
+    if (!name || !amount) {
+      return res.status(400).json({
+        success: false,
+        error: 'Nombre del acreedor y monto son requeridos'
+      });
+    }
+
+    // Crear la deuda donde el usuario actual es el deudor
+    const debt = await Debt.create({
+      creditor: req.user._id, // El mismo usuario como referencia
+      debtorPhone: req.user.phone || 'self', // Marcador especial
+      debtorName: req.user.name,
+      creditorName: name, // Nombre de a quién le debo
+      amount: Number(amount),
+      description: description || '',
+      isMyDebt: true // Marcador para identificar que es una deuda propia
+    });
+
+    res.status(201).json({
+      success: true,
+      data: debt
+    });
+  } catch (error) {
+    console.error('Error creando deuda propia:', error);
     
     if (error.name === 'ValidationError') {
       const messages = Object.values(error.errors).map(err => err.message);
@@ -556,6 +622,257 @@ app.delete('/api/debts/:id', protect, async (req, res) => {
       success: false,
       error: 'Error del servidor al eliminar deuda'
     });
+  }
+});
+
+// ============ RUTAS WISHLIST (PROTEGIDAS) ============
+
+// GET /api/wishes - Obtener todos los deseos del usuario
+app.get('/api/wishes', protect, async (req, res) => {
+  try {
+    const wishes = await Wish.find({ user: req.user._id }).sort({ addedAt: -1 });
+    res.json({ success: true, data: wishes });
+  } catch (error) {
+    console.error('Error obteniendo wishlist:', error);
+    res.status(500).json({ success: false, error: 'Error del servidor' });
+  }
+});
+
+// POST /api/wishes - Crear nuevo deseo
+app.post('/api/wishes', protect, async (req, res) => {
+  try {
+    const { name, price, description } = req.body;
+
+    if (!name || !price) {
+      return res.status(400).json({
+        success: false,
+        error: 'Nombre y precio son requeridos'
+      });
+    }
+
+    const wish = await Wish.create({
+      user: req.user._id,
+      name,
+      price: Number(price),
+      description: description || ''
+    });
+
+    res.status(201).json({ success: true, data: wish });
+  } catch (error) {
+    console.error('Error creando deseo:', error);
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({ success: false, error: messages.join(', ') });
+    }
+    res.status(500).json({ success: false, error: 'Error del servidor' });
+  }
+});
+
+// PUT /api/wishes/:id - Actualizar deseo
+app.put('/api/wishes/:id', protect, async (req, res) => {
+  try {
+    const wish = await Wish.findOneAndUpdate(
+      { _id: req.params.id, user: req.user._id },
+      req.body,
+      { new: true, runValidators: true }
+    );
+
+    if (!wish) {
+      return res.status(404).json({ success: false, error: 'Deseo no encontrado' });
+    }
+
+    res.json({ success: true, data: wish });
+  } catch (error) {
+    console.error('Error actualizando deseo:', error);
+    res.status(500).json({ success: false, error: 'Error del servidor' });
+  }
+});
+
+// PUT /api/wishes/:id/buy - Marcar como comprado y crear transacción
+app.put('/api/wishes/:id/buy', protect, async (req, res) => {
+  try {
+    const wish = await Wish.findOne({ _id: req.params.id, user: req.user._id });
+
+    if (!wish) {
+      return res.status(404).json({ success: false, error: 'Deseo no encontrado' });
+    }
+
+    // Crear transacción de gasto
+    const transaction = await Transaction.create({
+      user: req.user._id,
+      text: `🎁 ${wish.name}`,
+      amount: -Math.abs(wish.price),
+      category: 'shopping',
+      note: `Compra desde Wishlist: ${wish.description || wish.name}`
+    });
+
+    // Actualizar estado del deseo
+    wish.status = 'bought';
+    wish.boughtAt = new Date();
+    await wish.save();
+
+    res.json({ 
+      success: true, 
+      data: { wish, transaction }
+    });
+  } catch (error) {
+    console.error('Error comprando deseo:', error);
+    res.status(500).json({ success: false, error: 'Error del servidor' });
+  }
+});
+
+// PUT /api/wishes/:id/archive - Archivar deseo (me arrepentí)
+app.put('/api/wishes/:id/archive', protect, async (req, res) => {
+  try {
+    const wish = await Wish.findOneAndUpdate(
+      { _id: req.params.id, user: req.user._id },
+      { status: 'archived' },
+      { new: true }
+    );
+
+    if (!wish) {
+      return res.status(404).json({ success: false, error: 'Deseo no encontrado' });
+    }
+
+    res.json({ success: true, data: wish });
+  } catch (error) {
+    console.error('Error archivando deseo:', error);
+    res.status(500).json({ success: false, error: 'Error del servidor' });
+  }
+});
+
+// DELETE /api/wishes/:id - Eliminar deseo
+app.delete('/api/wishes/:id', protect, async (req, res) => {
+  try {
+    const wish = await Wish.findOneAndDelete({
+      _id: req.params.id,
+      user: req.user._id
+    });
+
+    if (!wish) {
+      return res.status(404).json({ success: false, error: 'Deseo no encontrado' });
+    }
+
+    res.json({ success: true, data: wish });
+  } catch (error) {
+    console.error('Error eliminando deseo:', error);
+    res.status(500).json({ success: false, error: 'Error del servidor' });
+  }
+});
+
+// ============ RUTAS SUBSCRIPTIONS (PROTEGIDAS) ============
+
+// GET /api/subscriptions - Obtener todas las suscripciones
+app.get('/api/subscriptions', protect, async (req, res) => {
+  try {
+    const subscriptions = await Subscription.find({ user: req.user._id }).sort({ createdAt: -1 });
+    
+    // Calcular totales
+    const activeSubscriptions = subscriptions.filter(s => s.isActive);
+    const totalMonthly = activeSubscriptions.reduce((sum, s) => sum + s.monthlyAmount, 0);
+    const totalYearly = activeSubscriptions.reduce((sum, s) => sum + s.yearlyAmount, 0);
+
+    res.json({ 
+      success: true, 
+      data: subscriptions,
+      totals: {
+        monthly: totalMonthly,
+        yearly: totalYearly,
+        count: activeSubscriptions.length
+      }
+    });
+  } catch (error) {
+    console.error('Error obteniendo suscripciones:', error);
+    res.status(500).json({ success: false, error: 'Error del servidor' });
+  }
+});
+
+// POST /api/subscriptions - Crear nueva suscripción
+app.post('/api/subscriptions', protect, async (req, res) => {
+  try {
+    const { name, amount, billingCycle, category } = req.body;
+
+    if (!name || !amount) {
+      return res.status(400).json({
+        success: false,
+        error: 'Nombre y monto son requeridos'
+      });
+    }
+
+    const subscription = await Subscription.create({
+      user: req.user._id,
+      name,
+      amount: Number(amount),
+      billingCycle: billingCycle || 'monthly',
+      category: category || 'Entretenimiento'
+    });
+
+    res.status(201).json({ success: true, data: subscription });
+  } catch (error) {
+    console.error('Error creando suscripción:', error);
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({ success: false, error: messages.join(', ') });
+    }
+    res.status(500).json({ success: false, error: 'Error del servidor' });
+  }
+});
+
+// PUT /api/subscriptions/:id - Actualizar suscripción
+app.put('/api/subscriptions/:id', protect, async (req, res) => {
+  try {
+    const subscription = await Subscription.findOneAndUpdate(
+      { _id: req.params.id, user: req.user._id },
+      req.body,
+      { new: true, runValidators: true }
+    );
+
+    if (!subscription) {
+      return res.status(404).json({ success: false, error: 'Suscripción no encontrada' });
+    }
+
+    res.json({ success: true, data: subscription });
+  } catch (error) {
+    console.error('Error actualizando suscripción:', error);
+    res.status(500).json({ success: false, error: 'Error del servidor' });
+  }
+});
+
+// PUT /api/subscriptions/:id/toggle - Activar/Desactivar suscripción
+app.put('/api/subscriptions/:id/toggle', protect, async (req, res) => {
+  try {
+    const subscription = await Subscription.findOne({ _id: req.params.id, user: req.user._id });
+
+    if (!subscription) {
+      return res.status(404).json({ success: false, error: 'Suscripción no encontrada' });
+    }
+
+    subscription.isActive = !subscription.isActive;
+    await subscription.save();
+
+    res.json({ success: true, data: subscription });
+  } catch (error) {
+    console.error('Error toggling suscripción:', error);
+    res.status(500).json({ success: false, error: 'Error del servidor' });
+  }
+});
+
+// DELETE /api/subscriptions/:id - Eliminar suscripción
+app.delete('/api/subscriptions/:id', protect, async (req, res) => {
+  try {
+    const subscription = await Subscription.findOneAndDelete({
+      _id: req.params.id,
+      user: req.user._id
+    });
+
+    if (!subscription) {
+      return res.status(404).json({ success: false, error: 'Suscripción no encontrada' });
+    }
+
+    res.json({ success: true, data: subscription });
+  } catch (error) {
+    console.error('Error eliminando suscripción:', error);
+    res.status(500).json({ success: false, error: 'Error del servidor' });
   }
 });
 

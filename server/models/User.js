@@ -19,6 +19,15 @@ const UserSchema = new mongoose.Schema({
       'Por favor ingresa un email válido'
     ]
   },
+  phone: {
+    type: String,
+    trim: true,
+    sparse: true, // Permite múltiples null pero valores únicos si existen
+    match: [
+      /^\+?[1-9]\d{6,14}$/,
+      'Por favor ingresa un número de teléfono válido (ej: +5491123456789)'
+    ]
+  },
   password: {
     type: String,
     required: [true, 'Por favor ingresa una contraseña'],

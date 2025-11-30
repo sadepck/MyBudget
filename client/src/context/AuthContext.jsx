@@ -122,6 +122,28 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Eliminar cuenta
+  const deleteAccount = async () => {
+    try {
+      const response = await fetch('/api/auth/delete-account', {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setUser(null);
+        return { success: true };
+      } else {
+        return { success: false, error: data.error };
+      }
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      return { success: false, error: 'Error de conexión con el servidor' };
+    }
+  };
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -130,6 +152,7 @@ export const AuthProvider = ({ children }) => {
       register,
       login,
       logout,
+      deleteAccount,
       checkAuth
     }}>
       {children}
