@@ -122,6 +122,31 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Cambiar contraseña
+  const changePassword = async (currentPassword, newPassword) => {
+    try {
+      const response = await fetch('/api/auth/change-password', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        return { success: true };
+      } else {
+        return { success: false, error: data.error };
+      }
+    } catch (error) {
+      console.error('Error changing password:', error);
+      return { success: false, error: 'Error de conexión con el servidor' };
+    }
+  };
+
   // Eliminar cuenta
   const deleteAccount = async () => {
     try {
@@ -152,6 +177,7 @@ export const AuthProvider = ({ children }) => {
       register,
       login,
       logout,
+      changePassword,
       deleteAccount,
       checkAuth
     }}>

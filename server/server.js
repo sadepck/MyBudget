@@ -13,7 +13,7 @@ const Debt = require('./models/Debt');
 const Wish = require('./models/Wish');
 const Subscription = require('./models/Subscription');
 const protect = require('./middleware/protect');
-const { register, login, logout, getMe, deleteAccount } = require('./controllers/authController');
+const { register, login, logout, getMe, deleteAccount, changePassword } = require('./controllers/authController');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -93,6 +93,7 @@ app.post('/api/auth/login', authLimiter, login);
 app.post('/api/auth/logout', logout);
 app.get('/api/auth/me', protect, getMe);
 app.delete('/api/auth/delete-account', protect, deleteAccount);
+app.put('/api/auth/change-password', protect, changePassword);
 
 // ============ RUTAS TRANSACTIONS (PROTEGIDAS) ============
 

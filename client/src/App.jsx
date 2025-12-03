@@ -15,6 +15,7 @@ import WishlistSection from './components/WishlistSection';
 import SubscriptionsSection from './components/SubscriptionsSection';
 import { PageSkeleton } from './components/Skeleton';
 import { ThemeProvider } from './context/ThemeContext';
+import { LanguageProvider } from './context/LanguageContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { getCategoryById } from './constants/categories';
 import { RotateCcw, LogOut } from 'lucide-react';
@@ -55,7 +56,7 @@ const PublicRoute = ({ children }) => {
 
 // Dashboard principal
 function Dashboard() {
-  const { user, logout, deleteAccount } = useAuth();
+  const { user, logout, deleteAccount, changePassword } = useAuth();
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   
@@ -104,6 +105,14 @@ function Dashboard() {
     const result = await deleteAccount();
     if (result.success) {
       toast.success('Cuenta eliminada correctamente');
+    }
+    return result;
+  };
+
+  const handleChangePassword = async (currentPassword, newPassword) => {
+    const result = await changePassword(currentPassword, newPassword);
+    if (result.success) {
+      toast.success('Contraseña actualizada correctamente');
     }
     return result;
   };
@@ -276,7 +285,7 @@ function Dashboard() {
   return (
     <div className="min-h-screen py-8 px-4">
       <div className="max-w-md mx-auto">
-        <Header user={user} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} />
+        <Header user={user} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onChangePassword={handleChangePassword} />
         {/* Balance e Ingresos/Gastos siempre muestran totales reales */}
         <Balance transactions={transactions} />
         <IncomeExpenses transactions={transactions} />
@@ -345,8 +354,9 @@ function Dashboard() {
 function App() {
   return (
     <BrowserRouter>
-      <ThemeProvider>
-        <AuthProvider>
+      <LanguageProvider>
+        <ThemeProvider>
+          <AuthProvider>
           <Toaster 
             position="top-center" 
             richColors 
@@ -383,8 +393,9 @@ function App() {
             />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-        </AuthProvider>
-      </ThemeProvider>
+          </AuthProvider>
+        </ThemeProvider>
+      </LanguageProvider>
     </BrowserRouter>
   );
 }
